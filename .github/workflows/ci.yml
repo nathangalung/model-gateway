@@ -1,0 +1,170 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+      with:
+        version: "latest"
+    
+    - name: Install dependencies
+      run: |
+        uv add -r requirements.txt
+        uv add pytest pytest-asyncio pytest-cov pytest-xdist
+    
+    - name: Run tests
+      run: |
+        uv run pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+    
+    - name: Install linting tools
+      run: |
+        uv add ruff black isort mypy
+    
+    - name: Run ruff (linting)
+      run: uv run ruff check app/ tests/
+    
+    - name: Run black (formatting check)
+      run: uv run black --check app/ tests/
+    
+    - name: Run isort (import sorting check)
+      run: uv run isort --check-only app/ tests/
+
+  docker-test:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build Docker image
+      run: |
+        docker build -t model-gateway:test .
+    
+    - name: Test Docker image
+      run: |
+        # Start container in background
+        docker run --rm -d --name test-container -p 8000:8000 model-gateway:test
+        
+        # Wait for container to be ready
+        sleep 15
+        
+        # Test health endpoint
+        curl -f http://localhost:8000/health || exit 1
+        
+        # Test models endpoint
+        curl -f http://localhost:8000/models || exit 1
+        
+        # Test predict endpoint
+        curl -f -X POST "http://localhost:8000/predict" \
+          -H "Content-Type: application/json" \
+          -d '{"models":["fraud_detection:v1"],"entities":{"cust_no":["X123456"]}}' || exit 1
+        
+        # Stop container
+        docker stop test-container
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: docker-test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+    
+    - name: Install dependencies
+      run: |
+        uv add -r requirements.txt
+        uv add pytest pytest-asyncio httpx
+    
+    - name: Run integration tests with Docker
+      run: |
+        # Start services with docker-compose
+        docker-compose up -d app
+        
+        # Wait for service to be ready
+        sleep 20
+        
+        # Run integration tests against running service
+        uv run pytest tests/test_main.py::TestModelGateway::test_health_endpoint -v
+        uv run pytest tests/test_main.py::TestModelGateway::test_models_endpoint -v
+        uv run pytest tests/test_main.py::TestModelGateway::test_response_structure_completeness -v
+        
+        # Clean up
+        docker-compose down
+
+  performance-test:
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+    
+    - name: Install dependencies
+      run: |
+        uv add -r requirements.txt
+        uv add pytest pytest-benchmark
+    
+    - name: Run performance tests
+      run: |
+        uv run pytest tests/test_main.py::TestModelGateway::test_batch_performance -v --benchmark-only

@@ -1,0 +1,79 @@
+{
+  "X123456": {
+    "amount": 1500.50,
+    "merchant_category": "grocery",
+    "income": 75000,
+    "age": 35,
+    "credit_history": 7
+  },
+  "1002": {
+    "amount": 250.00,
+    "merchant_category": "restaurant",
+    "income": 45000,
+    "age": 28,
+    "credit_history": 3
+  },
+  "1003": {
+    "amount": 3500.75,
+    "merchant_category": "electronics",
+    "income": 95000,
+    "age": 42,
+    "credit_history": 12
+  },
+  "1004": {
+    "amount": 89.99,
+    "merchant_category": "gas_station",
+    "income": 35000,
+    "age": 25,
+    "credit_history": 1
+  },
+  "1005": {
+    "amount": 1200.00,
+    "merchant_category": "clothing",
+    "income": 62000,
+    "age": 31,
+    "credit_history": 5
+  },
+  "1006": {
+    "amount": 45.50,
+    "merchant_category": "pharmacy",
+    "income": 55000,
+    "age": 38,
+    "credit_history": 8
+  },
+  "1007": {
+    "amount": 780.25,
+    "merchant_category": "travel",
+    "income": 85000,
+    "age": 29,
+    "credit_history": 6
+  },
+  "1008": {
+    "amount": 156.75,
+    "merchant_category": "grocery",
+    "income": 48000,
+    "age": 33,
+    "credit_history": 4
+  },
+  "1009": {
+    "amount": 2200.00,
+    "merchant_category": "furniture",
+    "income": 72000,
+    "age": 40,
+    "credit_history": 9
+  },
+  "1010": {
+    "amount": 67.80,
+    "merchant_category": "entertainment",
+    "income": 41000,
+    "age": 26,
+    "credit_history": 2
+  },
+  "1012": {
+    "amount": null,
+    "merchant_category": null,
+    "income": null,
+    "age": null,
+    "credit_history": null
+  }
+}
