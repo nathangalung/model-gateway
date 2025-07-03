@@ -15,6 +15,7 @@ dependencies = [
     "ruff>=0.1.0",
     "black>=23.0.0",
     "isort>=5.15.0",
+    "pytest-mock>=3.14.1",
 ]
 
 [project.optional-dependencies]

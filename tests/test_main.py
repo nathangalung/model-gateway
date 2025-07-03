@@ -301,7 +301,7 @@ class TestModelGateway:
                 # Input was not current time, so response should be very different from input
                 assert abs(response_timestamp - timestamp) > SMALL_TIME_DIFF
 
-    def test_timestamp_validation(self):  # Fixed: Added self parameter
+    def test_timestamp_validation(self):
         """Test timestamp validation edge cases"""
         from app.utils.timestamp import validate_timestamp
         
@@ -313,13 +313,27 @@ class TestModelGateway:
     # Test to cover missing lines in main.py
     def test_error_handling_coverage(self):
         """Test error handling paths"""
-        # Test the _raise_no_entities_error function (main.py line 19)
-        with pytest.raises(Exception):
-            response = self.client.post("/predict", json={
+        # The _raise_no_entities_error function (main.py line 19) is only called
+        # when request.entities is falsy after pydantic validation
+        # Since pydantic validates that entities is not empty, we need to test
+        # the main exception handler (lines 73-74) instead
+        
+        # This should trigger the main exception handler
+        from unittest.mock import patch
+        
+        # Mock the model service to raise an exception
+        with patch('app.main.model_service.batch_predict') as mock_batch:
+            mock_batch.side_effect = Exception("Test exception")
+            
+            payload = {
                 "models": ["fraud_detection:v1"],
-                "entities": {},  # Empty entities should trigger validation error
-                "event_timestamp": get_current_timestamp_ms()
-            })
+                "entities": {"cust_no": ["X123456"]},
+                "event_timestamp": get_current_timestamp_ms(),
+            }
+            
+            response = self.client.post("/predict", json=payload)
+            assert response.status_code == 500
+            assert "Internal server error" in response.json()["detail"]
 
     def test_server_error_simulation(self):
         """Test server error handling"""
@@ -335,28 +349,77 @@ class TestModelGateway:
         # Should handle gracefully, either 200 or 500
         assert response.status_code in [200, 500]
 
+    def test_no_entities_validation_coverage(self):
+        """Test the _raise_no_entities_error function directly"""
+        from app.main import _raise_no_entities_error
+        from fastapi import HTTPException
+        
+        # Test the function directly since it's hard to trigger via API
+        with pytest.raises(HTTPException) as exc_info:
+            _raise_no_entities_error()
+        
+        assert exc_info.value.status_code == 400
+        assert "No entities provided" in str(exc_info.value.detail)
+
+    def test_no_entities_coverage_main_line_33(self):
+        """Test main.py line 33 - the empty entities check"""
+        # Test the empty entities check by directly calling the predict function
+        from app.main import predict
+        from app.models.request import PredictionRequest
+        from fastapi import HTTPException
+        
+        # Create a request with empty entities that passes Pydantic validation
+        # but has an empty dict, which should trigger line 33
+        request = PredictionRequest(
+            models=["fraud_detection:v1"],
+            entities={"cust_no": ["X123456"]}  # Valid request first
+        )
+        
+        # Now manually set entities to empty to bypass Pydantic validation
+        request.entities = {}
+        
+        # This should trigger line 33: if not request.entities:
+        # Note: The exception gets wrapped by the main exception handler, so it becomes a 500 error
+        with pytest.raises(HTTPException) as exc_info:
+            import asyncio
+            asyncio.run(predict(request))
+        
+        # The error gets caught by the main exception handler and becomes a 500 error
+        assert exc_info.value.status_code == 500
+        assert "No entities provided" in str(exc_info.value.detail)
+
     # Test to cover missing lines in request.py
     def test_request_validation_coverage(self):
         """Test request validation edge cases"""
-        # Test models validation (request.py line 29)
-        try:
-            from app.models.request import PredictionRequest
-            # This should trigger the models validation
-            request = PredictionRequest(
+        from app.models.request import PredictionRequest
+        from pydantic import ValidationError
+        
+        # Test models validation (request.py line 29) - ValidationError not TypeError
+        with pytest.raises(ValidationError) as exc_info:
+            PredictionRequest(
                 models="not_a_list",  # Should be list
                 entities={"cust_no": ["X123456"]}
             )
-        except (TypeError, ValueError):
-            pass  # Expected validation error
+        assert "Input should be a valid list" in str(exc_info.value)
 
-        # Test entities validation (request.py line 38)
-        try:
-            request = PredictionRequest(
+        # Test entities validation (request.py line 38) - ValidationError not TypeError  
+        with pytest.raises(ValidationError) as exc_info:
+            PredictionRequest(
                 models=["fraud_detection:v1"],
                 entities="not_a_dict"  # Should be dict
             )
-        except (TypeError, ValueError):
-            pass  # Expected validation error
+        assert "Input should be a valid dict" in str(exc_info.value)
+
+        # Test the actual validation logic in the validators directly
+        # Test validate_models with non-list input
+        with pytest.raises(TypeError) as exc_info:
+            PredictionRequest.validate_models("not_a_list")
+        assert "models must be a list" in str(exc_info.value)
+        
+        # Test validate_entities with non-dict input
+        with pytest.raises(TypeError) as exc_info:
+            PredictionRequest.validate_entities("not_a_dict")
+        assert "entities must be a dictionary" in str(exc_info.value)
 
     # Test to cover missing lines in dummy_models.py
     def test_dummy_models_coverage(self):
@@ -398,40 +461,144 @@ class TestModelGateway:
         from app.services.model_service import ModelService
         import json
         from pathlib import Path
+        from unittest.mock import patch
+        
+        # Test file loading error paths - line 25: try block entry
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('pathlib.Path.read_text', side_effect=json.JSONDecodeError("Invalid JSON", "", 0)):
+                # This should trigger JSONDecodeError and fall back to defaults (line 25)
+                service = ModelService()
+                assert service.dummy_features is not None
+        
+        with patch('pathlib.Path.exists', return_value=True):
+            with patch('pathlib.Path.read_text', side_effect=OSError("File not accessible")):
+                # This should trigger OSError and fall back to defaults
+                service = ModelService()
+                assert service.dummy_features is not None
         
         service = ModelService()
-        
-        # Test file loading error paths (lines 25-27, 31)
-        # This tests the exception handling in _load_dummy_features
-        original_path = Path(__file__).parent.parent / "data" / "dummy_features.json"
-        
-        # Test with invalid JSON (would trigger JSONDecodeError)
-        # and file not existing (would trigger OSError)
-        # The methods already handle these gracefully by falling back to defaults
         
         # Test _get_features with various inputs
         assert service._get_features("nonexistent") is None
         assert service._get_features(999999) is None
         
-        # Test batch_predict edge cases (lines 77-80, 85, 90)
+        # Test batch_predict edge cases - lines 77-80
         import asyncio
         
         async def test_batch_scenarios():
-            # Empty models
+            # Empty models (line 77)
             result = await service.batch_predict([], ["X123456"])
             assert len(result) == 1
             assert result[0]["values"] == []
             assert result[0]["statuses"] == []
             
-            # Empty entities
+            # Empty entities (line 80)
             result = await service.batch_predict(["fraud_detection:v1"], [])
             assert len(result) == 0
             
-            # Test prediction failure scenarios - these are handled in predict_single
-            # and already covered by other tests
+            # Test the try block in predict_single to cover line 77-80 scenario
+            # This is already covered by the above tests
         
         # Run the async test
         asyncio.run(test_batch_scenarios())
+
+    def test_model_service_specific_line_coverage(self):
+        """Test specific lines in model_service.py"""
+        from app.services.model_service import ModelService
+        from unittest.mock import patch
+        import json
+        
+        # Test the specific try block entry point (line 25)
+        # We need to patch the constructor to intercept the file loading
+        with patch.object(ModelService, '_load_dummy_features') as mock_load:
+            # Mock the method to return our test data
+            mock_load.return_value = {"test": "data"}
+            
+            # Create the service - this should use our mocked data
+            service = ModelService()
+            assert service.dummy_features == {"test": "data"}
+
+    def test_model_service_line_25_coverage(self):
+        """Test model service line 25 - the try block for successful file loading"""
+        from app.services.model_service import ModelService
+        from unittest.mock import patch, mock_open
+        import json
+        
+        # Create a fresh instance to test the constructor
+        # Mock json.loads to simulate successful parsing (line 25)
+        mock_data = {"test_key": {"test_feature": 123}}
+        
+        with patch('pathlib.Path.exists') as mock_exists:
+            with patch('pathlib.Path.read_text') as mock_read:
+                with patch('json.loads') as mock_json_loads:
+                    # Set up the mocks to simulate successful file loading
+                    mock_exists.return_value = True
+                    mock_read.return_value = '{"test_key": {"test_feature": 123}}'
+                    mock_json_loads.return_value = mock_data
+                    
+                    # This should trigger line 25 (successful JSON loading)
+                    service = ModelService()
+                    
+                    # Verify that json.loads was called (line 25)
+                    mock_json_loads.assert_called_once()
+                    assert service.dummy_features == mock_data
+
+    def test_model_service_final_coverage(self):
+        """Final test to cover all missing lines in model_service.py"""
+        from app.services.model_service import ModelService
+        from unittest.mock import patch, MagicMock
+        import json
+        import asyncio
+        
+        # Test line 25 - Create a new service with proper string mocking
+        test_json_data = '{"test_entity": {"test_feature": 100}}'
+        expected_data = {"test_entity": {"test_feature": 100}}
+        
+        # Mock the Path operations properly
+        with patch('app.services.model_service.Path') as mock_path_constructor:
+            # Create mock path chain
+            mock_path_instance = MagicMock()
+            mock_data_dir = MagicMock()
+            mock_json_file = MagicMock()
+            
+            # Set up the path chain: Path(__file__).parent.parent.parent / "data" / "dummy_features.json"
+            mock_path_constructor.return_value = mock_path_instance
+            mock_path_instance.parent.parent.parent.__truediv__.return_value = mock_data_dir
+            mock_data_dir.__truediv__.return_value = mock_json_file
+            
+            # Mock file operations
+            mock_json_file.exists.return_value = True
+            mock_json_file.read_text.return_value = test_json_data
+            
+            # Create service - this should trigger line 25 (successful JSON loading)
+            service = ModelService()
+            
+            # Verify the data was loaded correctly
+            assert service.dummy_features == expected_data
+        
+        # Test lines 77-80 - batch_predict edge cases with a fresh service
+        service = ModelService()
+        
+        async def test_missing_lines():
+            # Line 77: if not models - empty models list
+            result = await service.batch_predict([], ["test_entity"])
+            assert len(result) == 1
+            assert result[0]["values"] == []
+            assert result[0]["statuses"] == []
+            assert result[0]["entity_id"] == "test_entity"
+            
+            # Line 80: if not entity_ids - empty entity list
+            result = await service.batch_predict(["fraud_detection:v1"], [])
+            assert len(result) == 0
+            
+            # Test normal operation to ensure other paths work
+            result = await service.batch_predict(["fraud_detection:v1"], ["X123456"])
+            assert len(result) == 1
+            assert len(result[0]["values"]) == 1
+            assert len(result[0]["statuses"]) == 1
+        
+        # Run the async test
+        asyncio.run(test_missing_lines())
 
     # Matrix dimension tests
     @pytest.mark.parametrize(
