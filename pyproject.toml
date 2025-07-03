@@ -1,12 +1,21 @@
 [project]
 name = "model-gateway"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.13"  # Updated to match your version
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "pydantic>=2.5.0",
     "httpx>=0.25.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",
+    "pytest-benchmark>=4.0.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0",
+    "isort>=5.15.0",
+    "mypy>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +67,7 @@ skip_covered = false
 
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py313']  # Updated
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -78,12 +87,12 @@ multi_line_output = 3
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
-select = ["E", "F", "W", "C90", "I", "N", "UP", "S", "B", "A", "COM", "DJ", "EM", "G", "PIE", "T20", "SIM", "TCH", "ARG", "PTH", "ERA", "PL", "R", "TRY"]
-ignore = ["S101", "PLR0913", "PLR0912", "PLR0915", "COM812", "EM101", "EM102", "TRY003"]
+target-version = "py313"  # Updated
+lint.select = ["E", "F", "W", "C90", "I", "N", "UP", "S", "B", "A", "COM", "DJ", "EM", "G", "PIE", "T20", "SIM", "TCH", "ARG", "PTH", "ERA", "PL", "R", "TRY"]
+lint.ignore = ["S101", "PLR0913", "PLR0912", "PLR0915", "COM812", "EM101", "EM102", "TRY003"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"  # Updated
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

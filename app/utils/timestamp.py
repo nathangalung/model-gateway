@@ -1,8 +1,10 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 
 def get_current_timestamp_ms() -> int:
     """Get current timestamp in milliseconds GMT+0"""
-    return int(datetime.now(timezone.utc).timestamp() * 1000)
+    return int(datetime.now(UTC).timestamp() * 1000)
+
 
 def validate_timestamp(timestamp: int) -> bool:
     """Validate if timestamp is reasonable (not too far in past/future)"""

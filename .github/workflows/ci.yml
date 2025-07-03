@@ -17,7 +17,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -51,7 +51,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -61,7 +61,7 @@ jobs:
         uv add ruff black isort mypy
     
     - name: Run ruff (linting)
-      run: uv run ruff check app/ tests/
+      run: uv run ruff check app/ tests/ --fix
     
     - name: Run black (formatting check)
       run: uv run black --check app/ tests/
@@ -117,7 +117,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -155,7 +155,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: '3.13'
     
     - name: Install uv
       uses: astral-sh/setup-uv@v3
