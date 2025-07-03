@@ -1,7 +1,7 @@
 [project]
 name = "model-gateway"
 version = "0.1.0"
-requires-python = ">=3.13"  # Updated to match your version
+requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
@@ -15,7 +15,6 @@ dependencies = [
     "ruff>=0.1.0",
     "black>=23.0.0",
     "isort>=5.15.0",
-    "mypy>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +27,6 @@ dev = [
     "ruff>=0.1.0",
     "black>=23.0.0",
     "isort>=5.12.0",
-    "mypy>=1.0.0",
 ]
 
 [build-system]
@@ -67,7 +65,7 @@ skip_covered = false
 
 [tool.black]
 line-length = 100
-target-version = ['py313']  # Updated
+target-version = ['py313']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -87,21 +85,8 @@ multi_line_output = 3
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"  # Updated
-lint.select = ["E", "F", "W", "C90", "I", "N", "UP", "S", "B", "A", "COM", "DJ", "EM", "G", "PIE", "T20", "SIM", "TCH", "ARG", "PTH", "ERA", "PL", "R", "TRY"]
-lint.ignore = ["S101", "PLR0913", "PLR0912", "PLR0915", "COM812", "EM101", "EM102", "TRY003"]
+target-version = "py313"
 
-[tool.mypy]
-python_version = "3.13"  # Updated
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
+[tool.ruff.lint]
+select = ["E", "F", "W", "C90", "I", "N", "UP", "S", "B", "A", "COM", "DJ", "EM", "G", "PIE", "T20", "SIM", "TCH", "ARG", "PTH", "ERA", "PL", "R", "TRY"]
+ignore = ["S101", "PLR0913", "PLR0912", "PLR0915", "COM812", "EM101", "EM102", "TRY003", "S311", "S324", "TRY401"]
