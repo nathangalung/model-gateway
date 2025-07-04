@@ -8,20 +8,18 @@ from .services.model_service import ModelService
 from .utils.timestamp import get_current_timestamp_ms
 
 app = FastAPI(title="Model Gateway", version="0.1.0")
-
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
-
 model_service = ModelService()
 
 
 def _raise_no_entities_error() -> None:
-    """Helper function to raise no entities error"""
+    """Raise no entities error"""
     raise HTTPException(status_code=400, detail="No entities provided")
 
 
 @app.get("/health")
 async def health_check():
-    """Health endpoint"""
+    """Health check"""
     return {"status": "ok", "timestamp": get_current_timestamp_ms()}
 
 
@@ -47,16 +45,15 @@ async def predict(request: PredictionRequest):
                 results.append(ModelResult(values=[], statuses=[], event_timestamp=[]))
             return PredictionResponse(metadata=ResponseMetadata(models_name=[]), results=results)
 
-        # Perform batch prediction
+        # Batch prediction
         prediction_results = await model_service.batch_predict(request.models, entity_ids)
 
-        # ALWAYS use current time for response timestamp (GMT+0)
+        # Always current timestamp
         current_timestamp = get_current_timestamp_ms()
 
         # Format results
         formatted_results = []
         for entity_result in prediction_results:
-            # Use current timestamp for ALL predictions
             timestamps = [current_timestamp] * len(request.models)
             formatted_results.append(
                 ModelResult(

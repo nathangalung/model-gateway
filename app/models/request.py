@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class PredictionRequest(BaseModel):
-    """Request model for batch prediction"""
+    """Request model for predictions"""
 
     model_config = {
         "json_schema_extra": {
@@ -16,19 +16,15 @@ class PredictionRequest(BaseModel):
         }
     }
 
-    models: list[str] = Field(
-        ..., description="List of model names with versions in format 'model_name:version'"
-    )
+    models: list[str] = Field(..., description="Model names with versions")
     entities: dict[str, list[Any]] = Field(..., description="Entity mapping with IDs")
-    event_timestamp: int | None = Field(None, description="Event timestamp in milliseconds GMT+0")
+    event_timestamp: int | None = Field(None, description="Event timestamp in ms")
 
     @field_validator("models")
     @classmethod
     def validate_models(cls, v):
         if not isinstance(v, list):
             raise TypeError("models must be a list")
-
-        # Allow empty list and any model format - validation happens at service level
         return v
 
     @field_validator("entities")

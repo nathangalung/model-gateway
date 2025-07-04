@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class ModelService:
-    """Service for handling model predictions"""
+    """Model prediction service"""
 
     def __init__(self):
-        """Initialize model service with dummy features"""
+        """Initialize with features"""
         self.dummy_features = self._load_dummy_features()
 
     def _load_dummy_features(self) -> dict[str, dict[str, Any]]:
-        """Load dummy features from JSON file"""
+        """Load features from JSON"""
         try:
             data_path = Path(__file__).parent.parent.parent / "data" / "dummy_features.json"
             if data_path.exists():
@@ -50,7 +50,7 @@ class ModelService:
         }
 
     def _get_features(self, entity_id: str | int) -> dict[str, Any] | None:
-        """Get features for entity ID"""
+        """Get entity features"""
         return self.dummy_features.get(str(entity_id))
 
     async def predict_single(
@@ -59,7 +59,7 @@ class ModelService:
         """Single model prediction"""
         await asyncio.sleep(0.005)
 
-        # Validate model format: exactly one colon
+        # Validate format
         if model_name.count(":") != 1 or not all(part.strip() for part in model_name.split(":")):
             return None, "400 BAD_REQUEST"
 
@@ -93,7 +93,6 @@ class ModelService:
         for entity_id in entity_ids:
             features = self._get_features(entity_id)
 
-            # Predict for all models for this entity
             predictions = []
             statuses = []
 

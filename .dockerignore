@@ -14,3 +14,7 @@ README.md
 venv/
 .DS_Store
 Thumbs.db
+tests/fixtures/
+*.log
+.ruff_cache/
+uv.lock

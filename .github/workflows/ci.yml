@@ -25,13 +25,10 @@ jobs:
         version: "latest"
     
     - name: Install dependencies
-      run: |
-        uv add -r requirements.txt
-        uv add pytest pytest-asyncio pytest-cov pytest-xdist
+      run: uv sync
     
     - name: Run tests
-      run: |
-        uv run pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
+      run: uv run pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -56,12 +53,11 @@ jobs:
     - name: Install uv
       uses: astral-sh/setup-uv@v3
     
-    - name: Install linting tools
-      run: |
-        uv add ruff black isort
+    - name: Install dependencies
+      run: uv sync
     
     - name: Run ruff (linting)
-      run: uv run ruff check app/ tests/ --fix
+      run: uv run ruff check app/ tests/
     
     - name: Run black (formatting check)
       run: uv run black --check app/ tests/
@@ -71,7 +67,7 @@ jobs:
 
   docker-test:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, lint]
     
     steps:
     - name: Checkout code
@@ -81,8 +77,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
     
     - name: Build Docker image
-      run: |
-        docker build -t model-gateway:test .
+      run: docker build -t model-gateway:test .
     
     - name: Test Docker image
       run: |
@@ -90,12 +85,12 @@ jobs:
         docker run --rm -d --name test-container -p 8000:8000 model-gateway:test
         
         # Wait for container to be ready
-        sleep 15
+        sleep 30
         
         # Test health endpoint
         curl -f http://localhost:8000/health || exit 1
         
-        # Test models endpoint
+        # Test models endpoint  
         curl -f http://localhost:8000/models || exit 1
         
         # Test predict endpoint
@@ -123,59 +118,27 @@ jobs:
       uses: astral-sh/setup-uv@v3
     
     - name: Install dependencies
-      run: |
-        uv add -r requirements.txt
-        uv add pytest pytest-asyncio httpx
+      run: uv sync
     
     - name: Run integration tests with Docker
       run: |
-        # Start services with docker compose (note: space instead of hyphen)
+        # Start services
         docker compose up -d app
         
         # Wait for service to be ready
         sleep 30
         
-        # Check if service is actually running
+        # Check service health
         docker compose ps
-        docker compose logs app
-        
-        # Test basic connectivity
         curl -f http://localhost:8000/health || {
           echo "Health check failed, checking logs:"
           docker compose logs app
           exit 1
         }
         
-        # Run integration tests against running service
-        uv run pytest tests/test_main.py::TestModelGateway::test_health_endpoint -v
-        uv run pytest tests/test_main.py::TestModelGateway::test_models_endpoint -v
-        uv run pytest tests/test_main.py::TestModelGateway::test_response_structure_completeness -v
+        # Run integration tests
+        uv run pytest tests/test_health.py -v
+        uv run pytest tests/test_main.py::TestIntegration::test_response_structure -v
         
         # Clean up
         docker compose down
-
-  performance-test:
-    runs-on: ubuntu-latest
-    needs: integration-test
-    if: github.ref == 'refs/heads/main'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.13'
-    
-    - name: Install uv
-      uses: astral-sh/setup-uv@v3
-    
-    - name: Install dependencies
-      run: |
-        uv add -r requirements.txt
-        uv add pytest pytest-benchmark
-    
-    - name: Run performance tests
-      run: |
-        uv run pytest tests/test_main.py::TestModelGateway::test_batch_performance -v

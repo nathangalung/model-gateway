@@ -4,12 +4,11 @@ from typing import Any
 
 
 class DummyModel:
-    """Base class for dummy models"""
+    """Base dummy model"""
 
     def __init__(self, model_name: str):
         self.model_name = model_name
-        # Use model name as seed for reproducible results
-        # Note: Using MD5 for non-cryptographic deterministic hashing only
+        # Deterministic seed
         self.seed = int(hashlib.md5(model_name.encode()).hexdigest()[:8], 16)  # noqa: S324
 
     def predict(self, features: dict[str, Any]) -> float | None:
@@ -26,8 +25,6 @@ class FraudDetectionV1(DummyModel):
         if amount is None:
             return None
 
-        # Seed random with model name + amount for reproducibility
-        # Note: Using random for deterministic dummy data generation only
         random.seed(self.seed + int(amount))
         return round(random.uniform(0.1, 0.95), 2)  # noqa: S311
 

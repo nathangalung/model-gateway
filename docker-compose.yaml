@@ -7,15 +7,15 @@ services:
     environment:
       - PYTHONPATH=/app
     volumes:
-      - ./app:/app/app
-      - ./data:/app/data
+      - ./app:/app/app:ro
+      - ./data:/app/data:ro
     command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s  # Added start period
+      start_period: 40s
 
   # Test runner
   test:
@@ -23,10 +23,24 @@ services:
     environment:
       - PYTHONPATH=/app
     volumes:
-      - ./app:/app/app
-      - ./data:/app/data
-      - ./tests:/app/tests
-    command: uv run pytest tests/ -v
+      - ./app:/app/app:ro
+      - ./data:/app/data:ro
+      - ./tests:/app/tests:ro
+    command: uv run pytest tests/ -v --cov=app --cov-report=term-missing
     depends_on:
       app:
         condition: service_healthy
+
+  # Development server
+  dev:
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      - PYTHONPATH=/app
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+      - ./tests:/app/tests
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
