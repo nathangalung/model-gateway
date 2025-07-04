@@ -7,13 +7,13 @@ A high-performance FastAPI service for batch ML model predictions with comprehen
 ### Using Docker (Recommended)
 ```bash
 # Start the application server
-docker-compose up app
+docker compose up app
 
 # Run all tests
-docker-compose up test
+docker compose up test
 
 # Development mode with hot reload
-docker-compose up dev
+docker compose up dev
 ```
 
 ### Local Development
@@ -36,12 +36,12 @@ uv run ruff check app/ tests/
 ### Architecture
 ```
 model_gateway/
-├── app/                    # Main application
+├── app/                   # Main application
 │   ├── main.py            # FastAPI endpoints
 │   ├── models/            # Request/Response models
 │   ├── services/          # Business logic & ML models
 │   └── utils/             # Utility functions
-├── tests/                 # Comprehensive test suite (98%+ coverage)
+├── tests/                 # Comprehensive test suite
 ├── data/                  # Sample entity features
 ├── .github/workflows/     # CI/CD pipeline
 └── docker-compose.yaml    # Container orchestration
@@ -52,7 +52,7 @@ model_gateway/
 - **Model Registry**: Centralized management of ML models
 - **Deterministic Results**: Consistent predictions for testing
 - **Health Monitoring**: Built-in health checks and model listing
-- **Comprehensive Testing**: 98%+ test coverage with edge cases
+- **Comprehensive Testing**: 97%+ test coverage with edge cases
 - **CI/CD Pipeline**: Automated testing, linting, and Docker integration
 
 ## API Documentation
@@ -170,7 +170,7 @@ docker build -t model-gateway .
 # Run the container
 docker run -p 8000:8000 model-gateway
 
-# Use docker-compose for full setup
+# Use docker compose for full setup
 docker compose up app
 ```
 
