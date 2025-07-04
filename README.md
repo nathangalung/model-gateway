@@ -1,7 +1,5 @@
 # Model Gateway
 
-A high-performance FastAPI service for batch ML model predictions with comprehensive testing and CI/CD pipeline.
-
 ## Quick Start
 
 ### Using Docker (Recommended)
