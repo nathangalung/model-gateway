@@ -153,7 +153,7 @@ uv run pytest tests/test_validation.py -v     # Input validation
 uv run pytest tests/ --cov=app --cov-report=html
 ```
 
-### Test Coverage: 98%+
+### Test Coverage: 97%+
 - **Unit Tests**: Individual components
 - **Integration Tests**: End-to-end workflows
 - **Performance Tests**: Load and response time
