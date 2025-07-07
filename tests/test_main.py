@@ -1,101 +1,404 @@
+import asyncio
+import queue
+import threading
+from unittest.mock import patch
+
 import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
+from app.main import _raise_no_entities_error, app, predict
 from app.models.request import PredictionRequest
-from app.models.response import ModelResult, PredictionResponse, ResponseMetadata
+from app.services.dummy_models import MODEL_REGISTRY
+from app.utils.timestamp import get_current_timestamp_ms
 
-# Test constants
-EXPECTED_MODELS_COUNT = 2
-EXPECTED_ENTITIES_COUNT = 2
-EXPECTED_TIMESTAMP = 1751429485000
-EXPECTED_RESPONSE_TIMESTAMP = 1751429485010
-EXPECTED_VALUES_COUNT = 3
+# Constants
+HTTP_OK = 200
+HTTP_BAD_REQUEST = 400
+HTTP_INTERNAL_SERVER_ERROR = 500
+THREAD_COUNT = 5
+EXPECTED_RESULT_COUNT = 2
 EXPECTED_METADATA_COUNT = 3
+EXPECTED_VALUES_COUNT = 3
 
 
-class TestRequestModels:
-    """Request validation tests"""
+class TestMain:
+    """Main functionality tests"""
 
-    def test_valid_request_with_all_fields(self):
-        """Complete request validation"""
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+
+    def test_health_check(self):
+        """Health endpoint"""
+        response = self.client.get("/health")
+        assert response.status_code == HTTP_OK
+
+
+class TestPredictionEndpoint:
+    """Prediction endpoint tests"""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+
+    @pytest.mark.parametrize(
+        "request_payload,expected",
+        [
+            # Basic cases
+            (
+                {"models": ["fraud_detection:v1"], "entities": {"cust_no": ["X123456"]}},
+                {"status_code": HTTP_OK, "results_count": 1},
+            ),
+            (
+                {
+                    "models": ["fraud_detection:v1", "credit_score:v1"],
+                    "entities": {"cust_no": ["X123456"]},
+                },
+                {"status_code": HTTP_OK, "results_count": 1},
+            ),
+            # Empty models
+            (
+                {"models": [], "entities": {"cust_no": ["X123456"]}},
+                {"status_code": HTTP_OK, "results_count": 1},
+            ),
+            # Empty entities list
+            (
+                {"models": ["fraud_detection:v1"], "entities": {"cust_no": []}},
+                {"status_code": HTTP_OK, "results_count": 0},
+            ),
+            # Multiple entities
+            (
+                {"models": ["fraud_detection:v1"], "entities": {"cust_no": ["X123456", "1002"]}},
+                {"status_code": HTTP_OK, "results_count": EXPECTED_RESULT_COUNT},
+            ),
+            # Invalid model format
+            (
+                {"models": ["invalid::model"], "entities": {"cust_no": ["X123456"]}},
+                {"status_code": HTTP_OK, "results_count": 1},
+            ),
+        ],
+    )
+    def test_basic_prediction_cases(self, request_payload, expected):
+        """Basic prediction cases"""
+        response = self.client.post("/predict", json=request_payload)
+        assert response.status_code == expected["status_code"]
+
+        if response.status_code == HTTP_OK:
+            data = response.json()
+            assert len(data["results"]) == expected["results_count"]
+            # Check metadata entity key
+            if request_payload.get("entities"):
+                entity_key = next(iter(request_payload["entities"]))
+                assert data["metadata"]["models_name"][0] == entity_key
+
+    @pytest.mark.parametrize(
+        "request_payload,should_error",
+        [
+            # Edge cases no error
+            ({"models": ["fraud_detection:v1"], "entities": {"cust_no": [None]}}, False),
+            ({"models": ["fraud_detection:v1"], "entities": {"cust_no": [123]}}, False),
+            (
+                {"models": ["fraud_detection:v1"], "entities": {"cust_no": ["missing_entity"]}},
+                False,
+            ),
+            (
+                {
+                    "models": ["fraud_detection:v1"],
+                    "entities": {"cust_no": [{"complex": "object"}]},
+                },
+                False,
+            ),
+            ({"models": ["nonexistent:v1"], "entities": {"cust_no": ["X123456"]}}, False),
+        ],
+    )
+    def test_edge_cases(self, request_payload, should_error):
+        """Edge case handling"""
+        response = self.client.post("/predict", json=request_payload)
+        if should_error:
+            assert response.status_code >= HTTP_BAD_REQUEST
+        else:
+            assert response.status_code == HTTP_OK
+
+    @pytest.mark.parametrize(
+        "num_models,num_entities",
+        [
+            (0, 0),
+            (0, 1),
+            (0, 2),
+            (0, 4),
+            (1, 0),
+            (1, 1),
+            (1, 2),
+            (1, 4),
+            (2, 0),
+            (2, 1),
+            (2, 2),
+            (2, 4),
+            (3, 0),
+            (3, 1),
+            (3, 2),
+            (3, 4),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (5, 4),
+        ],
+    )
+    def test_matrix_dimensions(self, num_models, num_entities):
+        """Matrix dimension testing"""
+        available_models = list(MODEL_REGISTRY.keys())
+        actual_models = min(num_models, len(available_models))
+        models = available_models[:actual_models] if actual_models > 0 else []
+        entities = [f"entity_{i}" for i in range(num_entities)]
+
+        payload = {
+            "models": models,
+            "entities": {"cust_no": entities},
+        }
+
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        data = response.json()
+        assert len(data["results"]) == num_entities
+
+
+class TestBusinessLogic:
+    """Business logic tests"""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+
+    def test_model_prediction_consistency(self):
+        """Prediction consistency"""
+        payload = {
+            "models": ["fraud_detection:v1"],
+            "entities": {"cust_no": ["X123456"]},
+        }
+
+        responses = []
+        for _ in range(3):
+            response = self.client.post("/predict", json=payload)
+            responses.append(response.json())
+
+        # Results consistent excluding entity
+        for i in range(1, len(responses)):
+            first_values = responses[0]["results"][0]["values"][1:]
+            current_values = responses[i]["results"][0]["values"][1:]
+            assert current_values == first_values
+
+    def test_invalid_models_mixed_with_valid(self):
+        """Mixed valid invalid models"""
+        payload = {
+            "models": ["fraud_detection:v1", "invalid::model", "credit_score:v1"],
+            "entities": {"cust_no": ["X123456"]},
+        }
+
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        result = response.json()["results"][0]
+        assert result["statuses"][0] == "200 OK"  # Entity status
+        assert result["statuses"][1] == "200 OK"  # First model
+        assert "400" in result["statuses"][2]  # Invalid model
+        assert result["statuses"][3] == "200 OK"  # Third model
+
+
+class TestPerformanceAndLoad:
+    """Performance tests"""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+
+    @pytest.mark.parametrize("num_models,num_entities", [(3, 5), (8, 3), (10, 2)])
+    def test_large_matrix_performance(self, num_models, num_entities):
+        """Large matrix performance"""
+        available_models = list(MODEL_REGISTRY.keys())
+        # Repeat models to count
+        models = (available_models * ((num_models // len(available_models)) + 1))[:num_models]
+        entities = [f"entity_{i}" for i in range(num_entities)]
+
+        payload = {
+            "models": models,
+            "entities": {"cust_no": entities},
+        }
+
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        data = response.json()
+        assert len(data["results"]) == num_entities
+        for result in data["results"]:
+            # Entity plus model predictions
+            assert len(result["values"]) == num_models + 1
+
+
+class TestModelGateway:
+    """Comprehensive model tests"""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+
+    def test_no_entities_validation_coverage(self):
+        """No entities error handling"""
+        with pytest.raises(HTTPException):
+            _raise_no_entities_error()
+
+    def test_no_entities_coverage_main(self):
+        """Empty entities check"""
         request = PredictionRequest(
-            models=["fraud_detection:v1", "credit_score:v1"],
-            entities={"cust_no": ["X123456", "1002"]},
-            event_timestamp=EXPECTED_TIMESTAMP,
+            models=["fraud_detection:v1"], entities={"cust_no": ["X123456"]}
         )
-        assert len(request.models) == EXPECTED_MODELS_COUNT
-        assert len(request.entities["cust_no"]) == EXPECTED_ENTITIES_COUNT
-        assert request.event_timestamp == EXPECTED_TIMESTAMP
+        request.entities = {}
 
-    def test_request_without_timestamp(self):
-        """Optional timestamp field"""
-        request = PredictionRequest(
-            models=["fraud_detection:v1"],
-            entities={"cust_no": ["X123456"]},
-        )
-        assert request.event_timestamp is None
+        with pytest.raises(HTTPException):
+            asyncio.run(predict(request))
 
-    def test_models_validator_coverage(self):
-        """Models field validation"""
-        # Valid case
-        valid_models = ["fraud_detection:v1"]
-        assert PredictionRequest.validate_models(valid_models) == valid_models
+    def test_error_handling_coverage(self):
+        """Error handling"""
+        with patch("app.main.model_service.batch_predict") as mock_batch:
+            mock_batch.side_effect = Exception("Test exception")
 
-        # Invalid type
-        with pytest.raises(TypeError):
-            PredictionRequest.validate_models("not_a_list")
+            payload = {
+                "models": ["fraud_detection:v1"],
+                "entities": {"cust_no": ["X123456"]},
+            }
 
-    def test_entities_validator_coverage(self):
-        """Entities field validation"""
-        # Valid case
-        valid_entities = {"cust_no": ["X123456"]}
-        assert PredictionRequest.validate_entities(valid_entities) == valid_entities
-
-        # Invalid type
-        with pytest.raises(TypeError):
-            PredictionRequest.validate_entities("not_a_dict")
-
-        # Empty dict
-        with pytest.raises(ValueError):
-            PredictionRequest.validate_entities({})
+            response = self.client.post("/predict", json=payload)
+            assert response.status_code == HTTP_INTERNAL_SERVER_ERROR
 
 
-class TestResponseModels:
-    """Response model tests"""
+class TestIntegration:
+    """Integration tests"""
 
-    def test_model_result_creation(self):
-        """Model result structure"""
-        timestamp_list = [
-            EXPECTED_RESPONSE_TIMESTAMP,
-            EXPECTED_RESPONSE_TIMESTAMP,
-            EXPECTED_RESPONSE_TIMESTAMP,
-        ]
-        result = ModelResult(
-            values=["X123456", 0.75, 0.82],
-            statuses=["200 OK", "200 OK", "200 OK"],
-            event_timestamp=timestamp_list,
-        )
-        assert len(result.values) == EXPECTED_VALUES_COUNT
-        assert len(result.statuses) == EXPECTED_VALUES_COUNT
-        assert len(result.event_timestamp) == EXPECTED_VALUES_COUNT
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.client = TestClient(app)
+        self.available_models = list(MODEL_REGISTRY.keys())
 
-    def test_response_metadata_creation(self):
-        """Metadata structure validation"""
-        metadata = ResponseMetadata(
-            models_name=["cust_no", "fraud_detection:v1", "credit_score:v1"]
-        )
-        assert len(metadata.models_name) == EXPECTED_METADATA_COUNT
-        assert metadata.models_name[0] == "cust_no"
+    @pytest.mark.parametrize(
+        "num_models,num_entities",
+        [
+            (1, 1),
+            (1, 3),
+            (2, 1),
+            (2, 3),
+            (3, 2),
+            (4, 4),
+            (1, 10),
+            (4, 1),
+            (0, 1),
+            (1, 0),
+            (0, 0),
+        ],
+    )
+    def test_matrix_dimensions(self, num_models, num_entities):
+        """Matrix dimensions"""
+        actual_models = min(num_models, len(self.available_models))
+        models = self.available_models[:actual_models] if actual_models > 0 else []
+        entities = [f"entity_{i}" for i in range(num_entities)] if num_entities > 0 else []
 
-    def test_prediction_response_creation(self):
-        """Full response structure"""
-        metadata = ResponseMetadata(models_name=["cust_no", "fraud_detection:v1"])
-        result = ModelResult(
-            values=["X123456", 0.75],
-            statuses=["200 OK", "200 OK"],
-            event_timestamp=[EXPECTED_RESPONSE_TIMESTAMP, EXPECTED_RESPONSE_TIMESTAMP],
-        )
-        response = PredictionResponse(metadata=metadata, results=[result])
+        payload = {
+            "models": models,
+            "entities": {"cust_no": entities},
+            "event_timestamp": get_current_timestamp_ms(),
+        }
 
-        assert len(response.metadata.models_name) == EXPECTED_MODELS_COUNT
-        assert len(response.results) == 1
-        assert len(response.results[0].values) == EXPECTED_MODELS_COUNT
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        data = response.json()
+        # Metadata includes entity key
+        expected_metadata_length = len(models) + (1 if models or entities else 1)
+        assert len(data["metadata"]["models_name"]) == expected_metadata_length
+        assert len(data["results"]) == num_entities
+
+    def test_invalid_models_handling(self):
+        """Invalid model handling"""
+        payload = {
+            "models": [
+                "fraud_detection:v1",
+                "invalid_model:v1",
+                "credit_score:v1",
+                "bad:format:model",
+            ],
+            "entities": {"cust_no": ["X123456"]},
+        }
+
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        result = response.json()["results"][0]
+        assert result["statuses"][0] == "200 OK"  # Entity status
+        assert result["statuses"][1] == "200 OK"  # fraud_detection:v1
+        assert result["statuses"][2] == "404 MODEL_NOT_FOUND"  # invalid_model:v1
+        assert result["statuses"][3] == "200 OK"  # credit_score:v1
+        assert result["statuses"][4] == "400 BAD_REQUEST"  # bad:format:model
+
+    def test_concurrent_requests(self):
+        """Concurrent requests"""
+
+        def make_request(result_queue):
+            payload = {
+                "models": ["fraud_detection:v1"],
+                "entities": {"cust_no": ["X123456"]},
+            }
+            response = self.client.post("/predict", json=payload)
+            result_queue.put(response.status_code == HTTP_OK)
+
+        threads = []
+        result_queue = queue.Queue()
+
+        for _ in range(THREAD_COUNT):
+            thread = threading.Thread(target=make_request, args=(result_queue,))
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get())
+
+        assert len(results) == THREAD_COUNT
+        assert all(results)
+
+    def test_response_structure(self):
+        """Response structure"""
+        payload = {
+            "models": ["fraud_detection:v1", "credit_score:v1"],
+            "entities": {"cust_no": ["X123456", "1002"]},
+        }
+
+        response = self.client.post("/predict", json=payload)
+        assert response.status_code == HTTP_OK
+
+        data = response.json()
+        assert "metadata" in data
+        assert "results" in data
+        assert len(data["results"]) == EXPECTED_RESULT_COUNT
+
+        # Check metadata structure
+        assert data["metadata"]["models_name"][0] == "cust_no"
+        metadata_count = len(data["metadata"]["models_name"])
+        assert metadata_count == EXPECTED_METADATA_COUNT
+
+        for result in data["results"]:
+            assert "values" in result
+            assert "statuses" in result
+            assert "event_timestamp" in result
+            # Entity plus two predictions
+            assert len(result["values"]) == EXPECTED_VALUES_COUNT
+            assert len(result["statuses"]) == EXPECTED_VALUES_COUNT
+            assert len(result["event_timestamp"]) == EXPECTED_VALUES_COUNT
+            # First value is entity
+            assert isinstance(result["values"][0], str)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

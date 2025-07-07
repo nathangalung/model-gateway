@@ -12,8 +12,8 @@ EXPECTED_VALUES_COUNT = 3
 EXPECTED_METADATA_COUNT = 3
 
 
-class TestRequestModelsExtended:
-    """Request model validation tests"""
+class TestRequestModels:
+    """Request validation tests"""
 
     def test_valid_request_with_all_fields(self):
         """Complete request validation"""
