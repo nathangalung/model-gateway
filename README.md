@@ -41,7 +41,7 @@ model_gateway/
 │   └── utils/             # Utility functions
 ├── tests/                 # Comprehensive test suite
 ├── data/                  # Sample entity features
-├── .github/workflows/     # CI/CD pipeline
+├── .github/workflows/     # CI pipeline
 └── docker-compose.yaml    # Container orchestration
 ```
 
@@ -52,7 +52,7 @@ model_gateway/
 - **Deterministic Results**: Consistent predictions for testing
 - **Health Monitoring**: Built-in health checks and model listing
 - **Comprehensive Testing**: 97%+ test coverage with edge cases
-- **CI/CD Pipeline**: Automated testing, linting, and Docker integration
+- **CI Pipeline**: Automated testing, linting, and Docker integration
 
 ## API Documentation
 
@@ -198,7 +198,7 @@ uv run mypy app/                        # Static type checking
 - **Framework**: FastAPI + Uvicorn
 - **Testing**: pytest with comprehensive fixtures
 - **Linting**: ruff + black + isort
-- **CI/CD**: GitHub Actions
+- **CI**: GitHub Actions
 
 ### Environment Setup
 1. **Install uv**: `curl -LsSf https://astral.sh/uv/install.sh | sh`
@@ -228,7 +228,7 @@ uv run mypy app/                        # Static type checking
 }
 ```
 
-## CI/CD Pipeline
+## CI Pipeline
 
 ### GitHub Actions Workflow
 - **Test Job**: Runs all tests with coverage reporting
