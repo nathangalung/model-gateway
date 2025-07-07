@@ -54,12 +54,14 @@ class TestValidation:
         if should_succeed and models:
             data = response.json()
             result = data["results"][0]
-            for status in result["statuses"]:
+            # Check model statuses skip entity
+            for status in result["statuses"][1:]:
                 assert "400 BAD_REQUEST" not in status
         elif not should_succeed and models:
             data = response.json()
             result = data["results"][0]
-            has_bad_request = any("400 BAD_REQUEST" in status for status in result["statuses"])
+            # Check model statuses skip entity
+            has_bad_request = any("400 BAD_REQUEST" in status for status in result["statuses"][1:])
             assert has_bad_request
 
     @pytest.mark.parametrize(

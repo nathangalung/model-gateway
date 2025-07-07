@@ -33,38 +33,53 @@ async def predict(request: PredictionRequest):
         entity_key = next(iter(request.entities))
         entity_ids = request.entities[entity_key]
 
-        # Handle empty cases
+        # Build metadata with entity key and models
+        metadata_models = [entity_key] + request.models
+
+        # Handle empty entity IDs
         if not entity_ids:
             return PredictionResponse(
-                metadata=ResponseMetadata(models_name=request.models), results=[]
+                metadata=ResponseMetadata(models_name=metadata_models), results=[]
             )
 
+        # Handle empty models
         if not request.models:
             results = []
-            for _ in entity_ids:
-                results.append(ModelResult(values=[], statuses=[], event_timestamp=[]))
-            return PredictionResponse(metadata=ResponseMetadata(models_name=[]), results=results)
+            current_timestamp = get_current_timestamp_ms()
+            for entity_id in entity_ids:
+                results.append(
+                    ModelResult(
+                        values=[str(entity_id)],
+                        statuses=["200 OK"],
+                        event_timestamp=[current_timestamp],
+                    )
+                )
+            return PredictionResponse(
+                metadata=ResponseMetadata(models_name=[entity_key]), results=results
+            )
 
         # Batch prediction
         prediction_results = await model_service.batch_predict(request.models, entity_ids)
-
-        # Always current timestamp
         current_timestamp = get_current_timestamp_ms()
 
-        # Format results
+        # Format results with entity ID first
         formatted_results = []
         for entity_result in prediction_results:
-            timestamps = [current_timestamp] * len(request.models)
+            entity_id = str(entity_result["entity_id"])
+            values = [entity_id] + entity_result["values"]
+            statuses = ["200 OK"] + entity_result["statuses"]
+            timestamps = [current_timestamp] * len(values)
+
             formatted_results.append(
                 ModelResult(
-                    values=entity_result["values"],
-                    statuses=entity_result["statuses"],
+                    values=values,
+                    statuses=statuses,
                     event_timestamp=timestamps,
                 )
             )
 
         return PredictionResponse(
-            metadata=ResponseMetadata(models_name=request.models), results=formatted_results
+            metadata=ResponseMetadata(models_name=metadata_models), results=formatted_results
         )
 
     except Exception as e:

@@ -28,7 +28,7 @@ jobs:
       run: uv sync
     
     - name: Run tests
-      run: uv run pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short
+      run: uv run pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --tb=short -x
     
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
@@ -84,8 +84,8 @@ jobs:
         # Start container in background
         docker run --rm -d --name test-container -p 8000:8000 model-gateway:test
         
-        # Wait for container to be ready
-        sleep 30
+        # Wait for container to be ready with timeout
+        timeout 60 bash -c 'while ! curl -f http://localhost:8000/health >/dev/null 2>&1; do sleep 2; done'
         
         # Test health endpoint
         curl -f http://localhost:8000/health || exit 1
@@ -93,10 +93,17 @@ jobs:
         # Test models endpoint  
         curl -f http://localhost:8000/models || exit 1
         
-        # Test predict endpoint
+        # Test predict endpoint with new format
         curl -f -X POST "http://localhost:8000/predict" \
           -H "Content-Type: application/json" \
           -d '{"models":["fraud_detection:v1"],"entities":{"cust_no":["X123456"]}}' || exit 1
+        
+        # Verify response structure includes entity in metadata
+        response=$(curl -s -X POST "http://localhost:8000/predict" \
+          -H "Content-Type: application/json" \
+          -d '{"models":["fraud_detection:v1"],"entities":{"cust_no":["X123456"]}}')
+        
+        echo "$response" | grep -q '"models_name":\["cust_no"' || exit 1
         
         # Stop container
         docker stop test-container
@@ -125,8 +132,8 @@ jobs:
         # Start services
         docker compose up -d app
         
-        # Wait for service to be ready
-        sleep 30
+        # Wait for service to be ready with better timeout handling
+        timeout 90 bash -c 'while ! curl -f http://localhost:8000/health >/dev/null 2>&1; do sleep 3; done'
         
         # Check service health
         docker compose ps
@@ -136,9 +143,21 @@ jobs:
           exit 1
         }
         
+        # Test new response format
+        response=$(curl -s -X POST "http://localhost:8000/predict" \
+          -H "Content-Type: application/json" \
+          -d '{"models":["fraud_detection:v1","credit_score:v1"],"entities":{"cust_no":["X123456","1002"]}}')
+        
+        # Verify entity is included in metadata
+        echo "$response" | grep -q '"models_name":\["cust_no","fraud_detection:v1","credit_score:v1"\]' || {
+          echo "Response format validation failed:"
+          echo "$response"
+          exit 1
+        }
+        
         # Run integration tests
         uv run pytest tests/test_health.py -v
         uv run pytest tests/test_main.py::TestIntegration::test_response_structure -v
         
         # Clean up
-        docker compose down
+        docker compose down -v --remove-orphans

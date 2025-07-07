@@ -11,14 +11,14 @@ ENTITY_COUNT = 2
 
 
 class TestModelService:
-    """Test model service functionality"""
+    """Model service functionality tests"""
 
     @pytest.fixture
     def service(self):
         return ModelService()
 
     def test_get_features_for_entity(self, service):
-        """Test feature retrieval"""
+        """Feature retrieval test"""
         # Known entity
         features = service._get_features("X123456")
         assert features is not None
@@ -29,14 +29,14 @@ class TestModelService:
         assert features is None
 
     async def test_predict_model_success(self, service):
-        """Test successful prediction"""
+        """Successful prediction test"""
         features = {"amount": 100.0}
         prediction, status = await service.predict_single("fraud_detection:v1", features)
         assert prediction is not None
         assert status == "200 OK"
 
     async def test_predict_model_invalid(self, service):
-        """Test invalid model prediction"""
+        """Invalid model prediction test"""
         features = {"amount": 100.0}
 
         # Invalid model format
@@ -50,7 +50,7 @@ class TestModelService:
         assert status == "404 MODEL_NOT_FOUND"
 
     async def test_batch_predict(self, service):
-        """Test batch prediction"""
+        """Batch prediction test"""
         models = ["fraud_detection:v1", "credit_score:v1"]
         entities = ["X123456", "1002"]
 

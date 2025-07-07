@@ -16,10 +16,10 @@ from app.utils.timestamp import get_current_timestamp_ms, validate_timestamp
 
 
 class TestCoverage:
-    """Coverage tests for edge cases"""
+    """Coverage edge case tests"""
 
     def test_timestamp_validation(self):
-        """Timestamp validation"""
+        """Timestamp validation test"""
         assert validate_timestamp(get_current_timestamp_ms())
         assert not validate_timestamp(0)
         assert not validate_timestamp(9999999999999)
@@ -57,6 +57,18 @@ class TestCoverage:
         assert credit_v2.predict({"income": 100}) is None
         assert credit_v2.predict({"income": None, "age": 30}) is None
         assert credit_v2.predict({"income": 100, "age": None}) is None
+
+    def test_dummy_models_missing_coverage(self):
+        """Missing lines dummy models"""
+        # Test FraudDetectionV2 missing merchant
+        fraud_v2 = FraudDetectionV2("test_fraud_v2")
+        result = fraud_v2.predict({"amount": 100, "other_field": "value"})
+        assert result is None
+
+        # Test CreditScoreV2 missing age
+        credit_v2 = CreditScoreV2("test_credit_v2")
+        result = credit_v2.predict({"income": 50000, "other_field": "value"})
+        assert result is None
 
     def test_model_service_coverage(self):
         """Model service edge cases"""
@@ -97,7 +109,7 @@ class TestCoverage:
         service = ModelService()
 
         async def test_prediction_errors():
-            # Test with missing features
+            # Test missing features
             features = None
             prediction, status = await service.predict_single("fraud_detection:v1", features)
             assert prediction is None
@@ -127,3 +139,25 @@ class TestCoverage:
 
             service = ModelService()
             assert service.dummy_features == {"test": "data"}
+
+    def test_model_service_file_not_exists_coverage(self):
+        """File not exists path"""
+        with patch("pathlib.Path.exists", return_value=False):
+            service = ModelService()
+            # Should use default features
+            assert "X123456" in service.dummy_features
+            assert "1002" in service.dummy_features
+            assert "1003" in service.dummy_features
+
+    def test_model_service_prediction_none_result(self):
+        """Model prediction returning None"""
+        service = ModelService()
+
+        async def test_none_prediction():
+            # Test empty features
+            features = {}  # Empty features return None
+            prediction, status = await service.predict_single("fraud_detection:v1", features)
+            assert prediction is None
+            assert status == "400 BAD_REQUEST"
+
+        asyncio.run(test_none_prediction())

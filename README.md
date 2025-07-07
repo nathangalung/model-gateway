@@ -48,6 +48,7 @@ model_gateway/
 ### Key Features
 - **Batch Processing**: Handle multiple models and entities in one request
 - **Model Registry**: Centralized management of ML models
+- **Entity Integration**: Entity IDs included in response metadata and results
 - **Deterministic Results**: Consistent predictions for testing
 - **Health Monitoring**: Built-in health checks and model listing
 - **Comprehensive Testing**: 97%+ test coverage with edge cases
@@ -105,18 +106,18 @@ curl -X POST "http://localhost:8000/predict" \
 ```json
 {
   "metadata": {
-    "models_name": ["fraud_detection:v1", "credit_score:v1"]
+    "models_name": ["cust_no", "fraud_detection:v1", "credit_score:v1"]
   },
   "results": [
     {
-      "values": [0.75, 0.82],
-      "statuses": ["200 OK", "200 OK"],
-      "event_timestamp": [1751429485010, 1751429485010]
+      "values": ["X123456", 0.75, 0.82],
+      "statuses": ["200 OK", "200 OK", "200 OK"],
+      "event_timestamp": [1751429485010, 1751429485010, 1751429485010]
     },
     {
-      "values": [0.23, 0.91],
-      "statuses": ["200 OK", "200 OK"],
-      "event_timestamp": [1751429485010, 1751429485010]
+      "values": ["1002", 0.23, 0.91],
+      "statuses": ["200 OK", "200 OK", "200 OK"],
+      "event_timestamp": [1751429485010, 1751429485010, 1751429485010]
     }
   ]
 }
